@@ -48,7 +48,7 @@ jobs:
         run: go mod tidy
 
       - name: Cache test data
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: tests/data
           key: tests-data-${{ hashFiles('scripts/download-dumps.sh') }}
