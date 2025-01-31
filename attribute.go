@@ -62,7 +62,7 @@ func parseAttributes(buf string) ([]Attribute, error) {
 }
 
 func isValidKeyChar(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-'
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '*'
 }
 
 func isLineContinuationChar(c byte) bool {
