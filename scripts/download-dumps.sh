@@ -28,3 +28,5 @@ wget -qO- "$url/ripe.db.route-set.gz" | gzip -dc > "$dir/ripe.db.route-set"
 # wget -qO- "$url/ripe.db.route.gz" | gzip -dc > "$dir/ripe.db.route"
 # wget -qO- "$url/ripe.db.route6.gz" | gzip -dc > "$dir/ripe.db.route6"
 wget -qO- "$url/ripe.db.rtr-set.gz" | gzip -dc > "$dir/ripe.db.rtr-set"
+
+wget -qO- "ftp://ftp.radb.net/radb/dbase/archive/2021/radb.db.210801.gz" | gzip -dc > "$dir/radb.db"
