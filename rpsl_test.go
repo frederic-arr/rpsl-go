@@ -22,7 +22,6 @@ func TestIntegration(t *testing.T) {
 	for _, dataset := range datasets {
 		t.Run(dataset, func(t *testing.T) {
 			data, err := os.ReadFile("tests/data/" + dataset)
-
 			if err != nil {
 				t.Fatalf("unable to read file: %v", err)
 			}

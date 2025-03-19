@@ -3,9 +3,11 @@
 
 package rpsl
 
-import "fmt"
+import (
+	"errors"
+)
 
-// Parses a string containing a single RPSL object
+// Parse parses a string containing a single RPSL object
 // and returns a representation of the parsed data.
 // If the string contains multiple objects, an error will be returned.
 // If the string is empty, an error will be returned.
@@ -27,23 +29,22 @@ import "fmt"
 //	fmt.Printf("Parsed Object: %+v\n", obj)
 func Parse(raw string) (*Object, error) {
 	objects, err := parseObjects(raw)
-
 	if err != nil {
 		return nil, err
 	}
 
 	if len(objects) == 0 {
-		return nil, fmt.Errorf("no objects found in input")
+		return nil, errors.New("no objects found in input")
 	}
 
 	if len(objects) > 1 {
-		return nil, fmt.Errorf("multiple objects found in input")
+		return nil, errors.New("multiple objects found in input")
 	}
 
 	return &objects[0], nil
 }
 
-// Parses a string containing a multiple RPSL object
+// ParseMany parses a string containing a multiple RPSL object
 // and returns a representation of the parsed data.
 // If the string does not contain any objects, nil will be returned.
 //
@@ -73,7 +74,6 @@ func Parse(raw string) (*Object, error) {
 //	}
 func ParseMany(raw string) ([]Object, error) {
 	objects, err := parseObjects(raw)
-
 	if err != nil {
 		return nil, err
 	}

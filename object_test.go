@@ -26,27 +26,6 @@ func TestObject(t *testing.T) {
 	}
 }
 
-func TestObjectLen(t *testing.T) {
-	raw := "organisation:      ORG-CEOf1-RIPE\n" +
-		"remarks:           This is a comment\n" +
-		"description:       CERN\n" +
-		"remarks:           This is another comment"
-
-	objects, err := parseObjects(raw)
-	if err != nil {
-		t.Fatalf(`parseObject => %v`, err)
-	}
-
-	if len(objects) != 1 {
-		t.Fatalf(`parseObject => length of %v, want %v`, len(objects), 1)
-	}
-
-	obj := objects[0]
-	if obj.Len() != 4 {
-		t.Fatalf(`object.Len() => %v, want %v`, obj.Len(), 4)
-	}
-}
-
 func TestObjectKeys(t *testing.T) {
 	raw := "organisation:      ORG-CEOf1-RIPE\n" +
 		"remarks:           This is a comment\n" +
@@ -78,6 +57,114 @@ func TestObjectKeys(t *testing.T) {
 
 	if keys[2] != "description" {
 		t.Fatalf(`object.Keys()[2] => %v, want %v`, keys[2], "description")
+	}
+}
+
+func TestObjectLen(t *testing.T) {
+	raw := "organisation:      ORG-CEOf1-RIPE\n" +
+		"remarks:           This is a comment\n" +
+		"description:       CERN\n" +
+		"remarks:           This is another comment"
+
+	objects, err := parseObjects(raw)
+	if err != nil {
+		t.Fatalf(`parseObject => %v`, err)
+	}
+
+	if len(objects) != 1 {
+		t.Fatalf(`parseObject => length of %v, want %v`, len(objects), 1)
+	}
+
+	obj := objects[0]
+	if obj.Len() != 4 {
+		t.Fatalf(`object.Len() => %v, want %v`, obj.Len(), 4)
+	}
+}
+
+func TestObjectGetFirst(t *testing.T) {
+	// Helper function for string pointer.
+	stringPtr := func(s string) *string {
+		return &s
+	}
+
+	tests := []struct {
+		name       string
+		attributes []Attribute
+		key        string
+		want       *string
+	}{
+		{
+			name: "MatchFirstAttribute",
+			attributes: []Attribute{
+				{Name: "source", Value: "RIPE"},
+				{Name: "admin-c", Value: "ABC123"},
+			},
+			key:  "source",
+			want: stringPtr("RIPE"),
+		},
+		{
+			name: "MatchSecondAttribute",
+			attributes: []Attribute{
+				{Name: "origin", Value: "AS1234"},
+				{Name: "source", Value: "RIPE"},
+			},
+			key:  "source",
+			want: stringPtr("RIPE"),
+		},
+		{
+			name: "CaseInsensitiveKeyMatch",
+			attributes: []Attribute{
+				{Name: "source", Value: "RIPE"},
+			},
+			key:  "SOURCE",
+			want: stringPtr("RIPE"),
+		},
+		{
+			name: "MultipleAttributesWithSameKey",
+			attributes: []Attribute{
+				{Name: "remarks", Value: "First remark"},
+				{Name: "remarks", Value: "Second remark"},
+			},
+			key:  "remarks",
+			want: stringPtr("First remark"),
+		},
+		{
+			name:       "EmptyAttributes",
+			attributes: []Attribute{},
+			key:        "source",
+			want:       nil,
+		},
+		{
+			name: "KeyNotFound",
+			attributes: []Attribute{
+				{Name: "source", Value: "RIPE"},
+				{Name: "admin-c", Value: "ABC123"},
+			},
+			key:  "origin",
+			want: nil,
+		},
+		{
+			name: "EmptyValue",
+			attributes: []Attribute{
+				{Name: "remarks", Value: ""},
+			},
+			key:  "remarks",
+			want: stringPtr(""),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := &Object{Attributes: tt.attributes}
+
+			got := o.GetFirst(tt.key)
+
+			if (got == nil && tt.want != nil) || (got != nil && tt.want == nil) {
+				t.Errorf("GetFirst(%q) = %v, want %v", tt.key, got, tt.want)
+			} else if got != nil && tt.want != nil && *got != *tt.want {
+				t.Errorf("GetFirst(%q) = %q, want %q", tt.key, *got, *tt.want)
+			}
+		})
 	}
 }
 
@@ -130,7 +217,7 @@ func TestObjectGetAll(t *testing.T) {
 }
 
 func TestMultipleObjects(t *testing.T) {
-	data := "" +
+	raw := "" +
 		"poem:           POEM-LIR\n" +
 		"form:           FORM-HAIKU\n" +
 		"text:           hello ripe please\n" +
@@ -154,7 +241,7 @@ func TestMultipleObjects(t *testing.T) {
 		"last-modified:  2024-06-01T23:28:08Z\n" +
 		"source:         RIPE\n"
 
-	objects, err := parseObjects(data)
+	objects, err := parseObjects(raw)
 	if err != nil {
 		t.Fatalf("(error): %v", err)
 	}
