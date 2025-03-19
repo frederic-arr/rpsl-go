@@ -4,8 +4,10 @@
 package rpsl
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -168,6 +170,56 @@ func parseObjects(buf string) ([]Object, error) {
 		if !strings.HasPrefix(line, "%") && !strings.HasPrefix(line, "#") {
 			currentPart = append(currentPart, line)
 		}
+	}
+
+	return objects, nil
+}
+
+func parseObjectsFromReader(r io.Reader) ([]Object, error) {
+	scanner := bufio.NewScanner(r)
+	var objects []Object
+	var currentPart []string
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// If the line is empty, it marks the end of an object.
+		if line == "" {
+			if len(currentPart) > 0 {
+				partText := strings.Join(currentPart, "\n")
+				attributes, err := parseAttributes(partText)
+				if err != nil {
+					return nil, err
+				}
+				objects = append(objects, Object{Attributes: attributes})
+				// Clear the currentPart slice without reallocating.
+				currentPart = currentPart[:0]
+			}
+			continue
+		}
+
+		// Skip comment lines.
+		if strings.HasPrefix(line, "%") || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Accumulate non-comment lines.
+		currentPart = append(currentPart, line)
+	}
+
+	// Check for any scanner error.
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	// Process any remaining accumulated lines (e.g. if file didn't end with an empty line).
+	if len(currentPart) > 0 {
+		partText := strings.Join(currentPart, "\n")
+		attributes, err := parseAttributes(partText)
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, Object{Attributes: attributes})
 	}
 
 	return objects, nil

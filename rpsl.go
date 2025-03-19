@@ -5,6 +5,7 @@ package rpsl
 
 import (
 	"errors"
+	"io"
 )
 
 // Parse parses a string containing a single RPSL object
@@ -74,6 +75,19 @@ func Parse(raw string) (*Object, error) {
 //	}
 func ParseMany(raw string) ([]Object, error) {
 	objects, err := parseObjects(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(objects) == 0 {
+		return nil, nil
+	}
+
+	return objects, nil
+}
+
+func ParseManyFromReader(r io.Reader) ([]Object, error) {
+	objects, err := parseObjectsFromReader(r)
 	if err != nil {
 		return nil, err
 	}

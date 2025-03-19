@@ -17,32 +17,44 @@ type Attribute struct {
 
 // newAttribute creates an Attribute from a name and value string,
 // normalizing the key to lowercase and cleaning the value.
+// This version avoids allocating a slice for lines by iterating over the value once.
 func newAttribute(name, value string) Attribute {
+	var builder strings.Builder
 	key := strings.ToLower(name)
-	cleanedLines := make([]string, 0, 4)
-	lines := strings.Split(value, "\n")
+	firstLine := true
+	start := 0
+	n := len(value)
 
-	for i, line := range lines {
-		// Remove a leading '+' from continuation lines.
-		if i > 0 && strings.HasPrefix(line, "+") {
-			line = line[1:]
-		}
+	for i := 0; i <= n; i++ {
+		// Look for newline or end-of-string.
+		if i == n || value[i] == '\n' {
+			line := value[start:i]
+			start = i + 1
 
-		// Remove inline comments by splitting on '#' and taking the first part.
-		if idx := strings.IndexByte(line, '#'); idx >= 0 {
-			line = line[:idx]
-		}
+			// For continuation lines (all but the first), remove a leading '+' if present.
+			if !firstLine && len(line) > 0 && line[0] == '+' {
+				line = line[1:]
+			}
 
-		line = strings.TrimSpace(line)
-		if line != "" {
-			cleanedLines = append(cleanedLines, line)
+			// Remove any inline comment.
+			if idx := strings.IndexByte(line, '#'); idx >= 0 {
+				line = line[:idx]
+			}
+
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				// Separate multiple lines with a space.
+				if builder.Len() > 0 {
+					builder.WriteByte(' ')
+				}
+				builder.WriteString(trimmed)
+			}
+
+			firstLine = false
 		}
 	}
 
-	// Join the cleaned lines with a space.
-	cleanedValue := strings.Join(cleanedLines, " ")
-
-	return Attribute{Name: key, Value: cleanedValue}
+	return Attribute{Name: key, Value: builder.String()}
 }
 
 // parseAttributes parses the given buffer into a slice of Attributes.
