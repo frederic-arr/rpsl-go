@@ -42,12 +42,11 @@ func (o *Object) Len() int {
 // string will be returned. If a key appears multiple times in the Object, only the first value will be returned.
 func (o *Object) GetFirst(key string) *string {
 	key = strings.ToLower(key)
-	for _, attr := range o.Attributes {
-		if attr.Name == key {
-			return &attr.Value
+	for i := range o.Attributes {
+		if o.Attributes[i].Name == key {
+			return &o.Attributes[i].Value
 		}
 	}
-
 	return nil
 }
 
@@ -91,12 +90,21 @@ func (o *Object) Exists(key string) bool {
 	return false
 }
 
-// String returns a string representation of the Object.
 func (o *Object) String() string {
-	// Pre-allocate a reasonably sized buffer.
-	var str strings.Builder
-	str.Grow(len(o.Attributes) * 64) // Assume average attribute length of ~64 chars.
+	// Compute the exact capacity required.
+	total := 0
+	n := len(o.Attributes)
+	for i := range n {
+		total += len(o.Attributes[i].Name) + 1 + len(o.Attributes[i].Value)
+	}
+	if n > 1 {
+		total += n - 1
+	}
 
+	var str strings.Builder
+	str.Grow(total)
+
+	// Build the string representation.
 	for i, attr := range o.Attributes {
 		if i > 0 {
 			str.WriteByte('\n')

@@ -18,21 +18,11 @@ type Attribute struct {
 // NewAttribute creates an Attribute from name and value byte slices, normalizing the key to lowercase and cleaning the
 // value.
 func newAttribute(name []byte, value []byte) Attribute {
-	// Convert name to lowercase if needed.
-	hasUpper := false
-	for _, b := range name {
-		if b >= 'A' && b <= 'Z' {
-			hasUpper = true
-			break
-		}
+	// Check for uppercase letters and convert to lowercase if needed.
+	if bytes.IndexFunc(name, func(r rune) bool { return r >= 'A' && r <= 'Z' }) >= 0 {
+		name = bytes.ToLower(name)
 	}
-
-	var keyStr string
-	if hasUpper {
-		keyStr = string(bytes.ToLower(name))
-	} else {
-		keyStr = string(name)
-	}
+	keyStr := string(name)
 
 	// Fast path for simple values without newlines or comments.
 	if !bytes.ContainsAny(value, "\n#") {
@@ -45,29 +35,24 @@ func newAttribute(name []byte, value []byte) Attribute {
 	// Process multi-line values or values with comments.
 	var buf strings.Builder
 	buf.Grow(len(value))
-	startLine := 0
+	start := 0
 	inLine := false
 
-	for i := 0; i < len(value); i++ {
-		if value[i] == '\n' || i == len(value)-1 {
-			// Handle the final character if it's not a newline.
-			endPos := i
-			if i == len(value)-1 && value[i] != '\n' {
-				endPos = i + 1
-			}
-
-			line := value[startLine:endPos]
-
-			// Handle line continuation.
+	// Process each line by scanning for newline characters.
+	for i := range value {
+		if value[i] == '\n' {
+			line := value[start:i]
+			// For subsequent lines, remove the line continuation '+'.
 			if inLine && len(line) > 0 && line[0] == '+' {
 				line = line[1:]
 			}
 
-			// Handle comments.
-			if commentIdx := bytes.IndexByte(line, '#'); commentIdx >= 0 {
-				line = line[:commentIdx]
+			// Remove comments.
+			if idx := bytes.IndexByte(line, '#'); idx >= 0 {
+				line = line[:idx]
 			}
 
+			// Trim whitespace and append if non-empty.
 			line = bytes.TrimSpace(line)
 			if len(line) > 0 {
 				if buf.Len() > 0 {
@@ -75,9 +60,27 @@ func newAttribute(name []byte, value []byte) Attribute {
 				}
 				buf.Write(line)
 			}
-
-			startLine = i + 1
+			start = i + 1
 			inLine = true
+		}
+	}
+
+	// Process any trailing content after the last newline.
+	if start < len(value) {
+		line := value[start:]
+		if inLine && len(line) > 0 && line[0] == '+' {
+			line = line[1:]
+		}
+		if idx := bytes.IndexByte(line, '#'); idx >= 0 {
+			line = line[:idx]
+		}
+
+		line = bytes.TrimSpace(line)
+		if len(line) > 0 {
+			if buf.Len() > 0 {
+				buf.WriteByte(' ')
+			}
+			buf.Write(line)
 		}
 	}
 
@@ -87,7 +90,6 @@ func newAttribute(name []byte, value []byte) Attribute {
 	}
 }
 
-// parseAttributes parses the given buffer into a slice of Attributes.
 func parseAttributes(buf []byte) ([]Attribute, error) {
 	if len(buf) == 0 {
 		return nil, errors.New("parseAttributes: object cannot be null")
@@ -179,11 +181,11 @@ func parseValue(buf []byte, pos int) ([]byte, int) {
 	return buf[start:stop], pos
 }
 
-// String returns a string representation of the Attribute.
 func (a *Attribute) String() string {
 	var str strings.Builder
+	str.Grow(len(a.Name) + 1 + len(a.Value))
 	str.WriteString(a.Name)
-	str.WriteString(":")
+	str.WriteByte(':')
 	str.WriteString(a.Value)
 	return str.String()
 }
