@@ -4,72 +4,109 @@
 package rpsl
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
 )
 
-// Attribute represents a parsed attribute with a normalized key.
 type Attribute struct {
 	Name  string
 	Value string
 }
 
-// newAttribute creates an Attribute from a name and value string,
-// normalizing the key to lowercase and cleaning the value.
-// This version avoids allocating a slice for lines by iterating over the value once.
-func newAttribute(name, value string) Attribute {
-	var builder strings.Builder
-	key := strings.ToLower(name)
-	firstLine := true
-	start := 0
-	n := len(value)
-
-	for i := 0; i <= n; i++ {
-		// Look for newline or end-of-string.
-		if i == n || value[i] == '\n' {
-			line := value[start:i]
-			start = i + 1
-
-			// For continuation lines (all but the first), remove a leading '+' if present.
-			if !firstLine && len(line) > 0 && line[0] == '+' {
-				line = line[1:]
-			}
-
-			// Remove any inline comment.
-			if idx := strings.IndexByte(line, '#'); idx >= 0 {
-				line = line[:idx]
-			}
-
-			trimmed := strings.TrimSpace(line)
-			if trimmed != "" {
-				// Separate multiple lines with a space.
-				if builder.Len() > 0 {
-					builder.WriteByte(' ')
-				}
-				builder.WriteString(trimmed)
-			}
-
-			firstLine = false
+// newAttribute creates an Attribute from a name and value byte slices, normalizing the key to lowercase and cleaning the
+// value. This version balances optimization with code simplicity.
+func newAttribute(name []byte, value []byte) Attribute {
+	// Convert name to lowercase only if needed.
+	var keyStr string
+	hasUpper := false
+	for _, b := range name {
+		if b >= 'A' && b <= 'Z' {
+			hasUpper = true
+			break
 		}
 	}
 
-	return Attribute{Name: key, Value: builder.String()}
+	if hasUpper {
+		keyStr = string(bytes.ToLower(name))
+	} else {
+		keyStr = string(name)
+	}
+
+	// Fast path for simple values.
+	if !bytes.ContainsAny(value, "\n#") {
+		return Attribute{
+			Name:  keyStr,
+			Value: string(bytes.TrimSpace(value)),
+		}
+	}
+
+	// Process multi-line values or values with comments in a single pass.
+	var buf bytes.Buffer
+	buf.Grow(len(value))
+
+	var line []byte
+	startLine := 0
+	inLine := false
+
+	// Manually parse lines to avoid bytes.Split.
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+
+		if c == '\n' || i == len(value)-1 {
+			// Handle the final character if it's not a newline.
+			if i == len(value)-1 && c != '\n' {
+				i++
+			}
+
+			// Extract the current line.
+			line = value[startLine:i]
+
+			// Handle line continuation.
+			if inLine && len(line) > 0 && line[0] == '+' {
+				line = line[1:]
+			}
+
+			// Handle comments.
+			commentIdx := bytes.IndexByte(line, '#')
+			if commentIdx >= 0 {
+				line = line[:commentIdx]
+			}
+
+			line = bytes.TrimSpace(line)
+			if len(line) > 0 {
+				if buf.Len() > 0 {
+					buf.WriteByte(' ')
+				}
+				buf.Write(line)
+			}
+
+			startLine = i + 1
+			inLine = true
+		}
+	}
+
+	return Attribute{
+		Name:  keyStr,
+		Value: buf.String(),
+	}
 }
 
 // parseAttributes parses the given buffer into a slice of Attributes.
-func parseAttributes(buf string) ([]Attribute, error) {
-	if buf == "" {
+func parseAttributes(buf []byte) ([]Attribute, error) {
+	if len(buf) == 0 {
 		return nil, errors.New("parseAttributes: object cannot be null")
 	}
 
-	var attributes []Attribute
-	var pos int
+	// Pre-allocate attributes slice - typical RPSL objects have 5-15 attributes.
+	attributes := make([]Attribute, 0, 16)
+	pos := 0
 
 	for pos < len(buf) {
 		key, newPos, err := parseKey(buf, pos)
 		if err != nil {
-			return nil, fmt.Errorf("parseAttributes: %w", err)
+			return nil, err
 		}
 
 		pos = newPos
@@ -95,32 +132,33 @@ func isLineContinuationChar(c byte) bool {
 	return c == ' ' || c == '\t' || c == '+'
 }
 
-// parseKey extracts a key ending at the first ':' and returns the key,
-// the position after the colon, and an error if any.
-func parseKey(buf string, pos int) (string, int, error) {
+// parseKey extracts a key ending at the first ':' and returns the key, the position after the colon, and an error if
+// any.
+func parseKey(buf []byte, pos int) ([]byte, int, error) {
 	start := pos
 
 	for pos < len(buf) {
 		c := buf[pos]
 		if c == ':' {
 			if pos == start {
-				return "", 0, fmt.Errorf("parseKey: zero-sized key at pos %d", pos)
+				return nil, 0, fmt.Errorf("parseKey: zero-sized key at pos %d", pos)
 			}
+
 			return buf[start:pos], pos + 1, nil
 		}
 
 		if !isValidKeyChar(c) {
-			return "", 0, fmt.Errorf("parseKey: illegal character '%c' at pos %d", c, pos)
+			return nil, 0, fmt.Errorf("parseKey: illegal character '%c' at pos %d", c, pos)
 		}
 
 		pos++
 	}
 
-	return "", 0, fmt.Errorf("parseKey: no key found starting at pos %d", start)
+	return nil, 0, fmt.Errorf("parseKey: no key found starting at pos %d", start)
 }
 
 // parseValue extracts a value until a newline that is not followed by a continuation char.
-func parseValue(buf string, pos int) (string, int) {
+func parseValue(buf []byte, pos int) ([]byte, int) {
 	start := pos
 	stop := pos
 

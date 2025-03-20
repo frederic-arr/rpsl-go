@@ -4,10 +4,9 @@
 package rpsl
 
 import (
-	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 )
 
@@ -15,11 +14,13 @@ type Object struct {
 	Attributes []Attribute
 }
 
-// Keys returns a slice of unique keys present in the Object.
-// If a key appears multiple times in the Object, it will only be included once in the returned slice.
+// Keys returns a slice of unique keys present in the Object. If a key appears multiple times in the Object, it will
+// only be included once in the returned slice.
 func (o *Object) Keys() []string {
-	keyPresent := make(map[string]struct{})
-	keyList := make([]string, 0)
+	// Most objects have < 16 unique keys.
+	keyPresent := make(map[string]struct{}, 16)
+	keyList := make([]string, 0, 16)
+
 	for _, attr := range o.Attributes {
 		if _, exists := keyPresent[attr.Name]; !exists {
 			keyPresent[attr.Name] = struct{}{}
@@ -35,9 +36,8 @@ func (o *Object) Len() int {
 	return len(o.Attributes)
 }
 
-// GetFirst returns the first value for a given key in the Object.
-// If the key is not present in the Object, an empty string will be returned.
-// If a key appears multiple times in the Object, only the first value will be returned.
+// GetFirst returns the first value for a given key in the Object. If the key is not present in the Object, an empty
+// string will be returned. If a key appears multiple times in the Object, only the first value will be returned.
 func (o *Object) GetFirst(key string) *string {
 	key = strings.ToLower(key)
 	for _, attr := range o.Attributes {
@@ -49,11 +49,25 @@ func (o *Object) GetFirst(key string) *string {
 	return nil
 }
 
-// GetAll returns a slice of values for a given key in the Object.
-// If the key is not present in the Object, an empty slice will be returned.
-// If a key appears multiple times in the Object, all values will be included in the returned slice.
+// GetAll returns a slice of values for a given key in the Object. If the key is not present in the Object, an empty
+// slice will be returned. If a key appears multiple times in the Object, all values will be included in the returned
+// slice.
 func (o *Object) GetAll(key string) []string {
-	attributes := make([]string, 0)
+	key = strings.ToLower(key)
+
+	// Check how many attributes match this key to pre-allocate.
+	count := 0
+	for _, attr := range o.Attributes {
+		if attr.Name == key {
+			count++
+		}
+	}
+
+	if count == 0 {
+		return []string{}
+	}
+
+	attributes := make([]string, 0, count)
 	for _, attr := range o.Attributes {
 		if attr.Name == key {
 			attributes = append(attributes, attr.Value)
@@ -77,14 +91,19 @@ func (o *Object) Exists(key string) bool {
 
 // String returns a string representation of the Object.
 func (o *Object) String() string {
+	// Pre-allocate a reasonably sized buffer.
 	var str strings.Builder
+	str.Grow(len(o.Attributes) * 64) // Assume average attribute length of ~64 chars.
 
-	var attributes []string
-	for _, attr := range o.Attributes {
-		attributes = append(attributes, attr.String())
+	for i, attr := range o.Attributes {
+		if i > 0 {
+			str.WriteByte('\n')
+		}
+		str.WriteString(attr.Name)
+		str.WriteByte(':')
+		str.WriteString(attr.Value)
 	}
 
-	str.WriteString(strings.Join(attributes, "\n"))
 	return str.String()
 }
 
@@ -95,7 +114,7 @@ func (o *Object) EnsureClass(class string) error {
 	}
 
 	first := o.Attributes[0].Name
-	if first != class {
+	if first != strings.ToLower(class) {
 		return fmt.Errorf("attribute '%s' should be the first, but found '%s' instead", class, first)
 	}
 
@@ -113,8 +132,16 @@ func (o *Object) EnsureAtLeastOne(key string) error {
 
 // EnsureAtMostOne ensures that the Object has at most one attribute with a given key.
 func (o *Object) EnsureAtMostOne(key string) error {
-	if len(o.GetAll(key)) > 1 {
-		return fmt.Errorf("attribute '%s' is (optional, single) but found multiple", key)
+	// Get count without allocating a slice.
+	count := 0
+	key = strings.ToLower(key)
+	for _, attr := range o.Attributes {
+		if attr.Name == key {
+			count++
+			if count > 1 {
+				return fmt.Errorf("attribute '%s' is (optional, single) but found multiple", key)
+			}
+		}
 	}
 
 	return nil
@@ -122,104 +149,66 @@ func (o *Object) EnsureAtMostOne(key string) error {
 
 // EnsureOne ensures that the Object has exactly one attribute with a given key.
 func (o *Object) EnsureOne(key string) error {
-	if err := o.EnsureAtLeastOne(key); err != nil {
-		return fmt.Errorf("attribute '%s' is (mandatory, single) but found none", key)
+	count := 0
+	exists := false
+	key = strings.ToLower(key)
+
+	for _, attr := range o.Attributes {
+		if attr.Name == key {
+			exists = true
+			count++
+			if count > 1 {
+				return fmt.Errorf("attribute '%s' is (mandatory, single) but found multiple", key)
+			}
+		}
 	}
 
-	if err := o.EnsureAtMostOne(key); err != nil {
-		return fmt.Errorf("attribute '%s' is (mandatory, single) but found multiple", key)
+	if !exists {
+		return fmt.Errorf("attribute '%s' is (mandatory, single) but found none", key)
 	}
 
 	return nil
 }
 
-func parseObjects(buf string) ([]Object, error) {
-	var objects []Object
+func parseObjects(buf []byte) ([]Object, error) {
+	// Most files contain a reasonable number of objects.
+	objects := make([]Object, 0, 4)
 
-	if buf == "" {
+	if len(buf) == 0 {
 		return objects, nil
 	}
 
-	lines := strings.Split(buf, "\n")
+	// Process comment lines first.
+	// This is more efficient than processing them line by line.
+	lines := bytes.Split(buf, []byte("\n"))
 
-	// Process line by line, accumulating non-comment lines.
-	var currentPart []string
-
-	for i := 0; i <= len(lines); i++ {
-		// Process a line or handle end of input.
-		isEndOfFile := i == len(lines)
-		isEmptyLine := !isEndOfFile && lines[i] == ""
-
-		// When we hit an empty line or EOF, process the accumulated part.
-		if isEmptyLine || isEndOfFile {
-			if len(currentPart) > 0 {
-				partText := strings.Join(currentPart, "\n")
-				attributes, err := parseAttributes(partText)
-				if err != nil {
-					return nil, err
-				}
-
-				objects = append(objects, Object{Attributes: attributes})
-				currentPart = currentPart[:0] // Clear slice without reallocating.
-			}
-			continue
-		}
-
-		// Skip comment lines.
-		line := lines[i]
-		if !strings.HasPrefix(line, "%") && !strings.HasPrefix(line, "#") {
-			currentPart = append(currentPart, line)
+	// In-place filtering of comment lines.
+	for i, line := range lines {
+		if len(line) > 0 && (line[0] == '%' || line[0] == '#') {
+			lines[i] = []byte{}
 		}
 	}
 
-	return objects, nil
-}
+	buf = bytes.Join(lines, []byte("\n"))
 
-func parseObjectsFromReader(r io.Reader) ([]Object, error) {
-	scanner := bufio.NewScanner(r)
-	var objects []Object
-	var currentPart []string
+	// Split by double newlines to get objects.
+	parts := bytes.Split(buf, []byte("\n\n"))
+	for _, part := range parts {
+		part = bytes.TrimSpace(part)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// If the line is empty, it marks the end of an object.
-		if line == "" {
-			if len(currentPart) > 0 {
-				partText := strings.Join(currentPart, "\n")
-				attributes, err := parseAttributes(partText)
-				if err != nil {
-					return nil, err
-				}
-				objects = append(objects, Object{Attributes: attributes})
-				// Clear the currentPart slice without reallocating.
-				currentPart = currentPart[:0]
-			}
+		if len(part) == 0 {
 			continue
 		}
 
-		// Skip comment lines.
-		if strings.HasPrefix(line, "%") || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Accumulate non-comment lines.
-		currentPart = append(currentPart, line)
-	}
-
-	// Check for any scanner error.
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	// Process any remaining accumulated lines (e.g. if file didn't end with an empty line).
-	if len(currentPart) > 0 {
-		partText := strings.Join(currentPart, "\n")
-		attributes, err := parseAttributes(partText)
+		attributes, err := parseAttributes(part)
 		if err != nil {
 			return nil, err
 		}
-		objects = append(objects, Object{Attributes: attributes})
+
+		if len(attributes) > 0 {
+			object := Object{Attributes: attributes}
+			objects = append(objects, object)
+		}
 	}
 
 	return objects, nil

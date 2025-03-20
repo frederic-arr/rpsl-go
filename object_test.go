@@ -7,9 +7,14 @@ import (
 	"testing"
 )
 
+// Helper function to create string pointer.
+func stringPtr(s string) *string {
+	return &s
+}
+
 func TestObject(t *testing.T) {
-	raw := "organisation:      ORG-CEOf1-RIPE\n" +
-		"description:       CERN"
+	raw := []byte("organisation:      ORG-CEOf1-RIPE\n" +
+		"description:       CERN")
 
 	objects, err := parseObjects(raw)
 	if err != nil {
@@ -26,11 +31,114 @@ func TestObject(t *testing.T) {
 	}
 }
 
-func TestObjectKeys(t *testing.T) {
-	raw := "organisation:      ORG-CEOf1-RIPE\n" +
+func TestObjectLen(t *testing.T) {
+	raw := []byte("organisation:      ORG-CEOf1-RIPE\n" +
 		"remarks:           This is a comment\n" +
 		"description:       CERN\n" +
-		"remarks:           This is another comment"
+		"remarks:           This is another comment")
+
+	objects, err := parseObjects(raw)
+	if err != nil {
+		t.Fatalf(`parseObject => %v`, err)
+	}
+
+	if len(objects) != 1 {
+		t.Fatalf(`parseObject => length of %v, want %v`, len(objects), 1)
+	}
+
+	obj := objects[0]
+	if obj.Len() != 4 {
+		t.Fatalf(`object.Len() => %v, want %v`, obj.Len(), 4)
+	}
+}
+
+func TestGetFirst(t *testing.T) {
+	tests := []struct {
+		name          string
+		object        Object
+		key           string
+		expectedValue *string
+		shouldBeNil   bool
+	}{
+		{
+			name: "KeyExistsOnce",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:           "person",
+			expectedValue: stringPtr("John Doe"),
+		},
+		{
+			name: "KeyExistsMultipleTimes",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "remarks", Value: "Remark 1"},
+					{Name: "remarks", Value: "Remark 2"},
+				},
+			},
+			key:           "remarks",
+			expectedValue: stringPtr("Remark 1"),
+		},
+		{
+			name: "CaseInsensitiveMatch",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:           "ADDRESS",
+			expectedValue: stringPtr("123 Main St"),
+		},
+		{
+			name: "KeyDoesNotExist",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:         "phone",
+			shouldBeNil: true,
+		},
+		{
+			name: "EmptyObject",
+			object: Object{
+				Attributes: []Attribute{},
+			},
+			key:         "person",
+			shouldBeNil: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.object.GetFirst(tc.key)
+
+			if tc.shouldBeNil {
+				if result != nil {
+					t.Errorf("Expected nil result, but got %v", *result)
+				}
+			} else {
+				if result == nil {
+					t.Errorf("Expected non-nil result, but got nil")
+				} else if *result != *tc.expectedValue {
+					t.Errorf("Result = %q, want %q", *result, *tc.expectedValue)
+				}
+			}
+		})
+	}
+}
+
+func TestObjectKeys(t *testing.T) {
+	raw := []byte("organisation:      ORG-CEOf1-RIPE\n" +
+		"remarks:           This is a comment\n" +
+		"description:       CERN\n" +
+		"remarks:           This is another comment")
 
 	objects, err := parseObjects(raw)
 	if err != nil {
@@ -60,119 +168,11 @@ func TestObjectKeys(t *testing.T) {
 	}
 }
 
-func TestObjectLen(t *testing.T) {
-	raw := "organisation:      ORG-CEOf1-RIPE\n" +
-		"remarks:           This is a comment\n" +
-		"description:       CERN\n" +
-		"remarks:           This is another comment"
-
-	objects, err := parseObjects(raw)
-	if err != nil {
-		t.Fatalf(`parseObject => %v`, err)
-	}
-
-	if len(objects) != 1 {
-		t.Fatalf(`parseObject => length of %v, want %v`, len(objects), 1)
-	}
-
-	obj := objects[0]
-	if obj.Len() != 4 {
-		t.Fatalf(`object.Len() => %v, want %v`, obj.Len(), 4)
-	}
-}
-
-func TestObjectGetFirst(t *testing.T) {
-	// Helper function for string pointer.
-	stringPtr := func(s string) *string {
-		return &s
-	}
-
-	tests := []struct {
-		name       string
-		attributes []Attribute
-		key        string
-		want       *string
-	}{
-		{
-			name: "MatchFirstAttribute",
-			attributes: []Attribute{
-				{Name: "source", Value: "RIPE"},
-				{Name: "admin-c", Value: "ABC123"},
-			},
-			key:  "source",
-			want: stringPtr("RIPE"),
-		},
-		{
-			name: "MatchSecondAttribute",
-			attributes: []Attribute{
-				{Name: "origin", Value: "AS1234"},
-				{Name: "source", Value: "RIPE"},
-			},
-			key:  "source",
-			want: stringPtr("RIPE"),
-		},
-		{
-			name: "CaseInsensitiveKeyMatch",
-			attributes: []Attribute{
-				{Name: "source", Value: "RIPE"},
-			},
-			key:  "SOURCE",
-			want: stringPtr("RIPE"),
-		},
-		{
-			name: "MultipleAttributesWithSameKey",
-			attributes: []Attribute{
-				{Name: "remarks", Value: "First remark"},
-				{Name: "remarks", Value: "Second remark"},
-			},
-			key:  "remarks",
-			want: stringPtr("First remark"),
-		},
-		{
-			name:       "EmptyAttributes",
-			attributes: []Attribute{},
-			key:        "source",
-			want:       nil,
-		},
-		{
-			name: "KeyNotFound",
-			attributes: []Attribute{
-				{Name: "source", Value: "RIPE"},
-				{Name: "admin-c", Value: "ABC123"},
-			},
-			key:  "origin",
-			want: nil,
-		},
-		{
-			name: "EmptyValue",
-			attributes: []Attribute{
-				{Name: "remarks", Value: ""},
-			},
-			key:  "remarks",
-			want: stringPtr(""),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			o := &Object{Attributes: tt.attributes}
-
-			got := o.GetFirst(tt.key)
-
-			if (got == nil && tt.want != nil) || (got != nil && tt.want == nil) {
-				t.Errorf("GetFirst(%q) = %v, want %v", tt.key, got, tt.want)
-			} else if got != nil && tt.want != nil && *got != *tt.want {
-				t.Errorf("GetFirst(%q) = %q, want %q", tt.key, *got, *tt.want)
-			}
-		})
-	}
-}
-
 func TestObjectGetAll(t *testing.T) {
-	raw := "organisation:      ORG-CEOf1-RIPE\n" +
+	raw := []byte("organisation:      ORG-CEOf1-RIPE\n" +
 		"remarks:           This is a comment\n" +
 		"description:       CERN\n" +
-		"remarks:           This is another comment"
+		"remarks:           This is another comment")
 
 	objects, err := parseObjects(raw)
 	if err != nil {
@@ -217,7 +217,7 @@ func TestObjectGetAll(t *testing.T) {
 }
 
 func TestMultipleObjects(t *testing.T) {
-	raw := "" +
+	data := []byte("" +
 		"poem:           POEM-LIR\n" +
 		"form:           FORM-HAIKU\n" +
 		"text:           hello ripe please\n" +
@@ -239,9 +239,9 @@ func TestMultipleObjects(t *testing.T) {
 		"mnt-by:         dummy-mnt\n" +
 		"created:        2024-06-01T23:28:08Z\n" +
 		"last-modified:  2024-06-01T23:28:08Z\n" +
-		"source:         RIPE\n"
+		"source:         RIPE\n")
 
-	objects, err := parseObjects(raw)
+	objects, err := parseObjects(data)
 	if err != nil {
 		t.Fatalf("(error): %v", err)
 	}
@@ -256,5 +256,377 @@ func TestMultipleObjects(t *testing.T) {
 
 	if objects[1].Len() != 11 {
 		t.Fatalf("(1.length): got %v, want %v", objects[1].Len(), 11)
+	}
+}
+
+func TestObjectString(t *testing.T) {
+	tests := []struct {
+		name     string
+		object   Object
+		expected string
+	}{
+		{
+			name: "EmptyObject",
+			object: Object{
+				Attributes: []Attribute{},
+			},
+			expected: "",
+		},
+		{
+			name: "SingleAttribute",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+				},
+			},
+			expected: "person:John Doe",
+		},
+		{
+			name: "MultipleAttributes",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+					{Name: "phone", Value: "+1-555-1234"},
+				},
+			},
+			expected: "person:John Doe\naddress:123 Main St\nphone:+1-555-1234",
+		},
+		{
+			name: "DuplicateAttributes",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "remarks", Value: "Remark 1"},
+					{Name: "remarks", Value: "Remark 2"},
+				},
+			},
+			expected: "person:John Doe\nremarks:Remark 1\nremarks:Remark 2",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.object.String()
+			if result != tc.expected {
+				t.Errorf("Object.String() = %q, want %q", result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestEnsureClass(t *testing.T) {
+	tests := []struct {
+		name      string
+		object    Object
+		class     string
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "CorrectClass",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			class:     "person",
+			expectErr: false,
+		},
+		{
+			name: "CaseInsensitiveMatch",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			class:     "PERSON",
+			expectErr: false,
+		},
+		{
+			name: "IncorrectClass",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "route", Value: "192.168.0.0/16"},
+					{Name: "origin", Value: "AS12345"},
+				},
+			},
+			class:     "person",
+			expectErr: true,
+			errMsg:    "attribute 'person' should be the first, but found 'route' instead",
+		},
+		{
+			name: "EmptyObject",
+			object: Object{
+				Attributes: []Attribute{},
+			},
+			class:     "person",
+			expectErr: true,
+			errMsg:    "object has no attributes",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.object.EnsureClass(tc.class)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("Expected error but got nil")
+				} else if err.Error() != tc.errMsg {
+					t.Errorf("Error message = %q, want %q", err.Error(), tc.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestEnsureAtLeastOne(t *testing.T) {
+	tests := []struct {
+		name      string
+		object    Object
+		key       string
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "KeyExistsOnce",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "address",
+			expectErr: false,
+		},
+		{
+			name: "KeyExistsMultipleTimes",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "remarks", Value: "Remark 1"},
+					{Name: "remarks", Value: "Remark 2"},
+				},
+			},
+			key:       "remarks",
+			expectErr: false,
+		},
+		{
+			name: "CaseInsensitiveMatch",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "ADDRESS",
+			expectErr: false,
+		},
+		{
+			name: "KeyDoesNotExist",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "phone",
+			expectErr: true,
+			errMsg:    "attribute 'phone' is (mandatory, multiple) but found none",
+		},
+		{
+			name: "EmptyObject",
+			object: Object{
+				Attributes: []Attribute{},
+			},
+			key:       "person",
+			expectErr: true,
+			errMsg:    "attribute 'person' is (mandatory, multiple) but found none",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.object.EnsureAtLeastOne(tc.key)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("Expected error but got nil")
+				} else if err.Error() != tc.errMsg {
+					t.Errorf("Error message = %q, want %q", err.Error(), tc.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestEnsureAtMostOne(t *testing.T) {
+	tests := []struct {
+		name      string
+		object    Object
+		key       string
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "KeyDoesNotExist",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "phone",
+			expectErr: false,
+		},
+		{
+			name: "KeyExistsOnce",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "address",
+			expectErr: false,
+		},
+		{
+			name: "CaseInsensitiveMatch",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "ADDRESS",
+			expectErr: false,
+		},
+		{
+			name: "KeyExistsMultipleTimes",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "remarks", Value: "Remark 1"},
+					{Name: "remarks", Value: "Remark 2"},
+				},
+			},
+			key:       "remarks",
+			expectErr: true,
+			errMsg:    "attribute 'remarks' is (optional, single) but found multiple",
+		},
+		{
+			name: "EmptyObject",
+			object: Object{
+				Attributes: []Attribute{},
+			},
+			key:       "person",
+			expectErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.object.EnsureAtMostOne(tc.key)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("Expected error but got nil")
+				} else if err.Error() != tc.errMsg {
+					t.Errorf("Error message = %q, want %q", err.Error(), tc.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestEnsureOne(t *testing.T) {
+	tests := []struct {
+		name      string
+		object    Object
+		key       string
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "KeyExistsOnce",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "address",
+			expectErr: false,
+		},
+		{
+			name: "CaseInsensitiveMatch",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "ADDRESS",
+			expectErr: false,
+		},
+		{
+			name: "KeyDoesNotExist",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "address", Value: "123 Main St"},
+				},
+			},
+			key:       "phone",
+			expectErr: true,
+			errMsg:    "attribute 'phone' is (mandatory, single) but found none",
+		},
+		{
+			name: "KeyExistsMultipleTimes",
+			object: Object{
+				Attributes: []Attribute{
+					{Name: "person", Value: "John Doe"},
+					{Name: "remarks", Value: "Remark 1"},
+					{Name: "remarks", Value: "Remark 2"},
+				},
+			},
+			key:       "remarks",
+			expectErr: true,
+			errMsg:    "attribute 'remarks' is (mandatory, single) but found multiple",
+		},
+		{
+			name: "EmptyObject",
+			object: Object{
+				Attributes: []Attribute{},
+			},
+			key:       "person",
+			expectErr: true,
+			errMsg:    "attribute 'person' is (mandatory, single) but found none",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.object.EnsureOne(tc.key)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("Expected error but got nil")
+				} else if err.Error() != tc.errMsg {
+					t.Errorf("Error message = %q, want %q", err.Error(), tc.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		})
 	}
 }

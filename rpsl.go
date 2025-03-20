@@ -3,10 +3,7 @@
 
 package rpsl
 
-import (
-	"errors"
-	"io"
-)
+import "errors"
 
 // Parse parses a string containing a single RPSL object
 // and returns a representation of the parsed data.
@@ -29,6 +26,30 @@ import (
 //
 //	fmt.Printf("Parsed Object: %+v\n", obj)
 func Parse(raw string) (*Object, error) {
+	return ParseBytes([]byte(raw))
+}
+
+// ParseBytes parses a byte slice containing a single RPSL object
+// and returns a representation of the parsed data.
+// If the byte slice contains multiple objects, an error will be returned.
+// If the byte slice is empty, an error will be returned.
+//
+// Example:
+//
+//	raw := []byte("person:	John Doe\n"+
+//	    "address:	1234 Elm Street\n"+
+//	    "phone:		+1 555 123456\n"+
+//	    "nic-hdl:	JD1234-RIPE\n"+
+//	    "mnt-by:	EXAMPLE-MNT\n"+
+//	    "source:	RIPE\n")
+//	obj, err := ParseBytes(raw)
+//
+//	if err != nil {
+//	    log.Fatalf("Failed to parse RPSL object: %v", err)
+//	}
+//
+//	fmt.Printf("Parsed Object: %+v\n", obj)
+func ParseBytes(raw []byte) (*Object, error) {
 	objects, err := parseObjects(raw)
 	if err != nil {
 		return nil, err
@@ -45,7 +66,7 @@ func Parse(raw string) (*Object, error) {
 	return &objects[0], nil
 }
 
-// ParseMany parses a string containing a multiple RPSL object
+// ParseMany parses a string containing multiple RPSL objects
 // and returns a representation of the parsed data.
 // If the string does not contain any objects, nil will be returned.
 //
@@ -64,30 +85,49 @@ func Parse(raw string) (*Object, error) {
 //		"nic-hdl:	JS5678-RIPE\n"+
 //		"mnt-by:	EXAMPLE-MNT\n"+
 //		"source:	RIPE"
-//	obj, err := ParseMany(raw)
+//	objs, err := ParseMany(raw)
 //
 //	if err != nil {
-//		log.Fatalf("Failed to parse RPSL object: %v", err)
+//		log.Fatalf("Failed to parse RPSL objects: %v", err)
 //	}
 //
-//	for _, obj := range *objs {
+//	for _, obj := range objs {
 //		fmt.Printf("Parsed Object: %+v\n", obj)
 //	}
 func ParseMany(raw string) ([]Object, error) {
-	objects, err := parseObjects(raw)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(objects) == 0 {
-		return nil, nil
-	}
-
-	return objects, nil
+	return ParseManyBytes([]byte(raw))
 }
 
-func ParseManyFromReader(r io.Reader) ([]Object, error) {
-	objects, err := parseObjectsFromReader(r)
+// ParseManyBytes parses a byte slice containing multiple RPSL objects
+// and returns a representation of the parsed data.
+// If the byte slice does not contain any objects, nil will be returned.
+//
+// Example:
+//
+//	raw := []byte("person:	John Doe\n"+
+//		"address:	1234 Elm Street\n"+
+//		"phone:		+1 555 123456\n"+
+//		"nic-hdl:	JD1234-RIPE\n"+
+//		"mnt-by:	EXAMPLE-MNT\n"+
+//		"source:	RIPE\n"+
+//		"\n"+ // Objects are delimited by one or more empty lines
+//		"person:	Jane Smith\n"+
+//		"address:	5678 Oak Street\n"+
+//		"phone:		+1 555 654321\n"+
+//		"nic-hdl:	JS5678-RIPE\n"+
+//		"mnt-by:	EXAMPLE-MNT\n"+
+//		"source:	RIPE")
+//	objs, err := ParseManyBytes(raw)
+//
+//	if err != nil {
+//		log.Fatalf("Failed to parse RPSL objects: %v", err)
+//	}
+//
+//	for _, obj := range objs {
+//		fmt.Printf("Parsed Object: %+v\n", obj)
+//	}
+func ParseManyBytes(raw []byte) ([]Object, error) {
+	objects, err := parseObjects(raw)
 	if err != nil {
 		return nil, err
 	}
