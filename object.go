@@ -4,9 +4,11 @@
 package rpsl
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -170,44 +172,65 @@ func (o *Object) EnsureOne(key string) error {
 	return nil
 }
 
-func parseObjects(buf []byte) ([]Object, error) {
-	// Most files contain a reasonable number of objects.
+func parseObjects(r io.Reader) ([]Object, error) {
+	// Start with a small capacity that will grow if needed.
 	objects := make([]Object, 0, 4)
+	currentObject := bytes.NewBuffer(make([]byte, 0, 512))
 
-	if len(buf) == 0 {
-		return objects, nil
-	}
+	// Pre-allocate a buffer for the scanner, but increase max size
+	scanner := bufio.NewScanner(r)
+	buf := make([]byte, 0, 512)      // Smaller initial allocation.
+	scanner.Buffer(buf, 4*1024*1024) // Allow large lines.
 
-	// Process comment lines first.
-	// This is more efficient than processing them line by line.
-	lines := bytes.Split(buf, []byte("\n"))
+	// Process the file line by line.
+	for scanner.Scan() {
+		line := scanner.Bytes()
 
-	// In-place filtering of comment lines.
-	for i, line := range lines {
+		// Skip comment lines.
 		if len(line) > 0 && (line[0] == '%' || line[0] == '#') {
-			lines[i] = []byte{}
-		}
-	}
-
-	buf = bytes.Join(lines, []byte("\n"))
-
-	// Split by double newlines to get objects.
-	parts := bytes.Split(buf, []byte("\n\n"))
-	for _, part := range parts {
-		part = bytes.TrimSpace(part)
-
-		if len(part) == 0 {
 			continue
 		}
 
-		attributes, err := parseAttributes(part)
+		// Handle empty lines.
+		if len(line) == 0 {
+			if currentObject.Len() > 0 {
+				attributes, err := parseAttributes(currentObject.Bytes())
+				if err != nil {
+					return nil, err
+				}
+
+				if len(attributes) > 0 {
+					objects = append(objects, Object{Attributes: attributes})
+				}
+
+				// Reset for the next object.
+				currentObject.Reset()
+			}
+
+			continue
+		}
+
+		// Add the line to the current object.
+		if currentObject.Len() > 0 {
+			currentObject.WriteByte('\n')
+		}
+
+		currentObject.Write(line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	// Don't forget the last object if there is one.
+	if currentObject.Len() > 0 {
+		attributes, err := parseAttributes(currentObject.Bytes())
 		if err != nil {
 			return nil, err
 		}
 
 		if len(attributes) > 0 {
-			object := Object{Attributes: attributes}
-			objects = append(objects, object)
+			objects = append(objects, Object{Attributes: attributes})
 		}
 	}
 

@@ -4,6 +4,7 @@
 package rpsl
 
 import (
+	"bytes"
 	"testing"
 )
 
@@ -16,7 +17,7 @@ func TestObject(t *testing.T) {
 	raw := []byte("organisation:      ORG-CEOf1-RIPE\n" +
 		"description:       CERN")
 
-	objects, err := parseObjects(raw)
+	objects, err := parseObjects(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf(`parseObject => %v`, err)
 	}
@@ -37,7 +38,7 @@ func TestObjectLen(t *testing.T) {
 		"description:       CERN\n" +
 		"remarks:           This is another comment")
 
-	objects, err := parseObjects(raw)
+	objects, err := parseObjects(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf(`parseObject => %v`, err)
 	}
@@ -140,7 +141,7 @@ func TestObjectKeys(t *testing.T) {
 		"description:       CERN\n" +
 		"remarks:           This is another comment")
 
-	objects, err := parseObjects(raw)
+	objects, err := parseObjects(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf(`parseObject => %v`, err)
 	}
@@ -174,7 +175,7 @@ func TestObjectGetAll(t *testing.T) {
 		"description:       CERN\n" +
 		"remarks:           This is another comment")
 
-	objects, err := parseObjects(raw)
+	objects, err := parseObjects(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf(`parseObject => %v`, err)
 	}
@@ -241,7 +242,7 @@ func TestMultipleObjects(t *testing.T) {
 		"last-modified:  2024-06-01T23:28:08Z\n" +
 		"source:         RIPE\n")
 
-	objects, err := parseObjects(data)
+	objects, err := parseObjects(bytes.NewReader(data))
 	if err != nil {
 		t.Fatalf("(error): %v", err)
 	}

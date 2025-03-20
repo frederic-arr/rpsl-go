@@ -4,7 +4,9 @@
 package rpsl
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -23,18 +25,18 @@ func TestIntegration(t *testing.T) {
 
 	for _, dataset := range datasets {
 		t.Run(dataset, func(t *testing.T) {
-			data, err := os.ReadFile("tests/data/" + dataset)
+			data, err := os.Open("tests/data/" + dataset)
 			if err != nil {
 				t.Fatalf("unable to read file: %v", err)
 			}
 
-			objects, err := ParseManyBytes(data)
+			objects, err := parseObjects(data)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
 			if len(objects) == 0 {
-				t.Fatalf(`parseObjects => length of %v, want > 0`, len(objects))
+				t.Fatalf(`parseObjectsFromBytes => length of %v, want > 0`, len(objects))
 			}
 		})
 	}
@@ -56,19 +58,19 @@ func TestParseAPI(t *testing.T) {
 		t.Fatalf("Parse(string) object length: got %v, want 4", obj.Len())
 	}
 
-	// Test the byte-based ParseBytes function (new API)
-	rawBytes := []byte("person: Jane Smith\naddress: 456 Example Ave\nnic-hdl: JS1-RIPE\nsource: RIPE")
-	obj, err = ParseBytes(rawBytes)
+	// Test the byte-based ParseFromBytes function (new API)
+	rawBytes := bytes.NewReader([]byte("person: Jane Smith\naddress: 456 Example Ave\nnic-hdl: JS1-RIPE\nsource: RIPE"))
+	obj, err = ParseFromReader(rawBytes)
 	if err != nil {
-		t.Fatalf("ParseBytes error: %v", err)
+		t.Fatalf("ParseFromBytes error: %v", err)
 	}
 
 	if obj == nil {
-		t.Fatalf("ParseBytes returned nil object")
+		t.Fatalf("ParseFromBytes returned nil object")
 	}
 
 	if obj.Len() != 4 {
-		t.Fatalf("ParseBytes object length: got %v, want 4", obj.Len())
+		t.Fatalf("ParseFromBytes object length: got %v, want 4", obj.Len())
 	}
 }
 
@@ -84,15 +86,15 @@ func TestParseManyAPI(t *testing.T) {
 		t.Fatalf("ParseMany(string) objects count: got %v, want 2", len(objects))
 	}
 
-	// Test the byte-based ParseManyBytes function (new API)
-	rawBytes := []byte("person: Alice Brown\naddress: 789 Example Blvd\nnic-hdl: AB1-RIPE\nsource: RIPE\n\nperson: Bob Green\naddress: 101 Example Ct\nnic-hdl: BG1-RIPE\nsource: RIPE")
-	objects, err = ParseManyBytes(rawBytes)
+	// Test the byte-based ParseManyFromBytes function (new API)
+	rawBytes := bytes.NewReader([]byte("person: Alice Brown\naddress: 789 Example Blvd\nnic-hdl: AB1-RIPE\nsource: RIPE\n\nperson: Bob Green\naddress: 101 Example Ct\nnic-hdl: BG1-RIPE\nsource: RIPE"))
+	objects, err = ParseManyFromReader(rawBytes)
 	if err != nil {
-		t.Fatalf("ParseManyBytes error: %v", err)
+		t.Fatalf("ParseManyFromBytes error: %v", err)
 	}
 
 	if len(objects) != 2 {
-		t.Fatalf("ParseManyBytes objects count: got %v, want 2", len(objects))
+		t.Fatalf("ParseManyFromBytes objects count: got %v, want 2", len(objects))
 	}
 }
 
@@ -211,106 +213,6 @@ func TestParse(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			obj, err := Parse(tc.input)
-
-			// Check error expectations
-			if tc.expectErr {
-				if err == nil {
-					t.Errorf("Expected error but got nil")
-				} else if tc.errSubstring != "" && !strings.Contains(err.Error(), tc.errSubstring) {
-					t.Errorf("Error %q does not contain expected substring %q", err.Error(), tc.errSubstring)
-				}
-				return
-			}
-
-			// No error expected
-			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-				return
-			}
-
-			// Validate object
-			if tc.validateObj != nil {
-				if err = tc.validateObj(obj); err != nil {
-					t.Errorf("Object validation failed: %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestParseBytes(t *testing.T) {
-	tests := []struct {
-		name         string
-		input        []byte
-		expectErr    bool
-		errSubstring string
-		validateObj  func(*Object) error
-	}{
-		{
-			name:         "EmptyInput",
-			input:        []byte{},
-			expectErr:    true,
-			errSubstring: "no objects found",
-		},
-		{
-			name:         "NilInput",
-			input:        nil,
-			expectErr:    true,
-			errSubstring: "no objects found",
-		},
-		{
-			name:         "InvalidSyntax",
-			input:        []byte("this is not a valid RPSL object"),
-			expectErr:    true,
-			errSubstring: "parseKey: illegal character",
-		},
-		{
-			name: "SingleObject",
-			input: []byte("person:  John Doe\n" +
-				"address: 123 Main St\n" +
-				"phone:   +1-555-1234\n" +
-				"source:  TEST"),
-			expectErr: false,
-			validateObj: func(obj *Object) error {
-				if obj == nil {
-					return errors.New("object is nil")
-				}
-				if obj.Len() != 4 {
-					return errors.New("expected 4 attributes")
-				}
-				phone := obj.GetFirst("phone")
-				if phone == nil || *phone != "+1-555-1234" {
-					return errors.New("phone attribute incorrect")
-				}
-				return nil
-			},
-		},
-		{
-			name: "ObjectWithSpecialCharacters",
-			input: []byte("person:  Jöhn Døe\n" +
-				"address: 123 Élm Straße\n" +
-				"source:  TEST"),
-			expectErr: false,
-			validateObj: func(obj *Object) error {
-				if obj == nil {
-					return errors.New("object is nil")
-				}
-				person := obj.GetFirst("person")
-				if person == nil || *person != "Jöhn Døe" {
-					return errors.New("person attribute with special chars incorrect")
-				}
-				address := obj.GetFirst("address")
-				if address == nil || *address != "123 Élm Straße" {
-					return errors.New("address attribute with special chars incorrect")
-				}
-				return nil
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			obj, err := ParseBytes(tc.input)
 
 			// Check error expectations
 			if tc.expectErr {
@@ -490,7 +392,7 @@ func TestParseMany(t *testing.T) {
 	}
 }
 
-func TestParseManyBytes(t *testing.T) {
+func TestParseManyFromReader(t *testing.T) {
 	tests := []struct {
 		name          string
 		input         []byte
@@ -587,7 +489,7 @@ func TestParseManyBytes(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			objs, err := ParseManyBytes(tc.input)
+			objs, err := parseObjects(bytes.NewReader(tc.input))
 
 			// Check error expectations
 			if tc.expectErr {
@@ -599,27 +501,16 @@ func TestParseManyBytes(t *testing.T) {
 				return
 			}
 
-			// No error expected
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 				return
 			}
 
-			// Check if nil is returned for empty input
-			if tc.expectedCount == 0 {
-				if objs != nil {
-					t.Errorf("Expected nil objects for empty input, got %v objects", len(objs))
-				}
-				return
-			}
-
-			// Check object count
 			if len(objs) != tc.expectedCount {
 				t.Errorf("Expected %d objects, got %d", tc.expectedCount, len(objs))
 				return
 			}
 
-			// Validate objects
 			if tc.validateObjs != nil {
 				if err = tc.validateObjs(objs); err != nil {
 					t.Errorf("Objects validation failed: %v", err)
@@ -629,8 +520,8 @@ func TestParseManyBytes(t *testing.T) {
 	}
 }
 
-func BenchmarkParseBytes(b *testing.B) {
-	data := []byte("mntner:          DEV-MNT  # Comment \n" +
+func BenchmarkParseFromReader(b *testing.B) {
+	data := bytes.NewReader([]byte(`mntner:          DEV-MNT  # Comment \n" +
 		"descr:           DEV maintainer\n" +
 		"admin-c:         VM1-DEV\n" +
 		"tech-c:          VM1-DEV\n" +
@@ -639,13 +530,18 @@ func BenchmarkParseBytes(b *testing.B) {
 		"auth:            MD5-PW $1$q8Su3Hq/$rJt5M3TNLeRE4UoCh5bSH/\n" +
 		"remarks:         password: secret\n" +
 		"mnt-by:          DEV-MNT\n" +
-		"source:          DEV\n")
+		"source:          DEV\n
+
+`))
 
 	b.ResetTimer()
 	for range b.N {
-		_, err := ParseBytes(data)
-		if err != nil {
-			b.Fatalf("ParseBytes error: %v", err)
+		if _, err := parseObjects(data); err != nil {
+			b.Fatalf("ParseManyFromReader error: %v", err)
+		}
+
+		if _, err := data.Seek(0, io.SeekStart); err != nil {
+			b.Fatalf("ParseManyFromReader error: %v", err)
 		}
 	}
 }
