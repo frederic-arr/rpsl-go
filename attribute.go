@@ -15,11 +15,10 @@ type Attribute struct {
 	Value string
 }
 
-// newAttribute creates an Attribute from a name and value byte slices, normalizing the key to lowercase and cleaning the
-// value. This version balances optimization with code simplicity.
+// NewAttribute creates an Attribute from name and value byte slices, normalizing the key to lowercase and cleaning the
+// value.
 func newAttribute(name []byte, value []byte) Attribute {
-	// Convert name to lowercase only if needed.
-	var keyStr string
+	// Convert name to lowercase if needed.
 	hasUpper := false
 	for _, b := range name {
 		if b >= 'A' && b <= 'Z' {
@@ -28,13 +27,14 @@ func newAttribute(name []byte, value []byte) Attribute {
 		}
 	}
 
+	var keyStr string
 	if hasUpper {
 		keyStr = string(bytes.ToLower(name))
 	} else {
 		keyStr = string(name)
 	}
 
-	// Fast path for simple values.
+	// Fast path for simple values without newlines or comments.
 	if !bytes.ContainsAny(value, "\n#") {
 		return Attribute{
 			Name:  keyStr,
@@ -42,26 +42,21 @@ func newAttribute(name []byte, value []byte) Attribute {
 		}
 	}
 
-	// Process multi-line values or values with comments in a single pass.
-	var buf bytes.Buffer
+	// Process multi-line values or values with comments.
+	var buf strings.Builder
 	buf.Grow(len(value))
-
-	var line []byte
 	startLine := 0
 	inLine := false
 
-	// Manually parse lines to avoid bytes.Split.
 	for i := 0; i < len(value); i++ {
-		c := value[i]
-
-		if c == '\n' || i == len(value)-1 {
+		if value[i] == '\n' || i == len(value)-1 {
 			// Handle the final character if it's not a newline.
-			if i == len(value)-1 && c != '\n' {
-				i++
+			endPos := i
+			if i == len(value)-1 && value[i] != '\n' {
+				endPos = i + 1
 			}
 
-			// Extract the current line.
-			line = value[startLine:i]
+			line := value[startLine:endPos]
 
 			// Handle line continuation.
 			if inLine && len(line) > 0 && line[0] == '+' {
@@ -69,8 +64,7 @@ func newAttribute(name []byte, value []byte) Attribute {
 			}
 
 			// Handle comments.
-			commentIdx := bytes.IndexByte(line, '#')
-			if commentIdx >= 0 {
+			if commentIdx := bytes.IndexByte(line, '#'); commentIdx >= 0 {
 				line = line[:commentIdx]
 			}
 
