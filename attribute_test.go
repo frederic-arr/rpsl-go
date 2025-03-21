@@ -85,7 +85,6 @@ func TestSpecialCharacters(t *testing.T) {
 }
 
 func TestGarbageValue(t *testing.T) {
-	// This is the byte slice representation of the input string
 	data := []byte("mntner::!@$%^&*()_+~![]{};':<>,./?\\/")
 
 	attr, err := parseAttributes(data)
@@ -101,10 +100,7 @@ func TestGarbageValue(t *testing.T) {
 		t.Fatalf(`(0.name): got %v, want %v`, attr[0].Name, "mntner")
 	}
 
-	// Let's debug the actual bytes in the value
 	actualBytes := []byte(attr[0].Value)
-
-	// Directly check for the expected bytes instead of using string comparison
 	expectedBytes := []byte(":!@$%^&*()_+~![]{};':<>,./?\\/")
 
 	if !bytes.Equal(actualBytes, expectedBytes) {

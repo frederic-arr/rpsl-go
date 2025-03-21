@@ -43,7 +43,7 @@ func TestIntegration(t *testing.T) {
 }
 
 func TestParseAPI(t *testing.T) {
-	// Test the string-based Parse function (original API)
+	// Test the string-based Parse function (original API).
 	rawString := "person: John Doe\naddress: 123 Example St\nnic-hdl: JD1-RIPE\nsource: RIPE"
 	obj, err := Parse(rawString)
 	if err != nil {
@@ -58,7 +58,7 @@ func TestParseAPI(t *testing.T) {
 		t.Fatalf("Parse(string) object length: got %v, want 4", obj.Len())
 	}
 
-	// Test the byte-based ParseFromBytes function (new API)
+	// Test the byte-based ParseFromBytes function (new API).
 	rawBytes := bytes.NewReader([]byte("person: Jane Smith\naddress: 456 Example Ave\nnic-hdl: JS1-RIPE\nsource: RIPE"))
 	obj, err = ParseFromReader(rawBytes)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestParseAPI(t *testing.T) {
 }
 
 func TestParseManyAPI(t *testing.T) {
-	// Test the string-based ParseMany function (original API)
+	// Test the string-based ParseMany function (original API).
 	rawString := "person: John Doe\naddress: 123 Example St\nnic-hdl: JD1-RIPE\nsource: RIPE\n\nperson: Jane Smith\naddress: 456 Example Ave\nnic-hdl: JS1-RIPE\nsource: RIPE"
 	objects, err := ParseMany(rawString)
 	if err != nil {
@@ -86,7 +86,7 @@ func TestParseManyAPI(t *testing.T) {
 		t.Fatalf("ParseMany(string) objects count: got %v, want 2", len(objects))
 	}
 
-	// Test the byte-based ParseManyFromBytes function (new API)
+	// Test the byte-based ParseManyFromBytes function (new API).
 	rawBytes := bytes.NewReader([]byte("person: Alice Brown\naddress: 789 Example Blvd\nnic-hdl: AB1-RIPE\nsource: RIPE\n\nperson: Bob Green\naddress: 101 Example Ct\nnic-hdl: BG1-RIPE\nsource: RIPE"))
 	objects, err = ParseManyFromReader(rawBytes)
 	if err != nil {
@@ -132,10 +132,12 @@ func TestParse(t *testing.T) {
 				if obj.Len() != 4 {
 					return errors.New("expected 4 attributes")
 				}
+
 				person := obj.GetFirst("person")
 				if person == nil || *person != "John Doe" {
 					return errors.New("person attribute incorrect")
 				}
+
 				return nil
 			},
 		},
@@ -162,10 +164,12 @@ func TestParse(t *testing.T) {
 				if obj.Len() != 3 {
 					return errors.New("expected 3 attributes")
 				}
+
 				address := obj.GetFirst("address")
 				if address == nil || *address != "123 Main St" {
 					return errors.New("address attribute incorrect")
 				}
+
 				return nil
 			},
 		},
@@ -182,10 +186,12 @@ func TestParse(t *testing.T) {
 				if obj == nil {
 					return errors.New("object is nil")
 				}
+
 				remarks := obj.GetFirst("remarks")
 				if remarks == nil || *remarks != "First line Continuation line 1 Continuation line 2" {
 					return errors.New("remarks with continuation lines incorrect")
 				}
+
 				return nil
 			},
 		},
@@ -201,10 +207,12 @@ func TestParse(t *testing.T) {
 				if obj == nil {
 					return errors.New("object is nil")
 				}
+
 				address := obj.GetFirst("address")
 				if address == nil || *address != "123 Main St Suite 100" {
 					return errors.New("address with plus notation incorrect")
 				}
+
 				return nil
 			},
 		},
@@ -213,8 +221,6 @@ func TestParse(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			obj, err := Parse(tc.input)
-
-			// Check error expectations
 			if tc.expectErr {
 				if err == nil {
 					t.Errorf("Expected error but got nil")
@@ -224,13 +230,11 @@ func TestParse(t *testing.T) {
 				return
 			}
 
-			// No error expected
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 				return
 			}
 
-			// Validate object
 			if tc.validateObj != nil {
 				if err = tc.validateObj(obj); err != nil {
 					t.Errorf("Object validation failed: %v", err)
@@ -327,7 +331,6 @@ func TestParseMany(t *testing.T) {
 					return errors.New("expected 3 objects")
 				}
 
-				// Check third object
 				person3 := objs[2].GetFirst("person")
 				if person3 == nil || *person3 != "Bob Johnson" {
 					return errors.New("third person attribute incorrect")
@@ -340,7 +343,7 @@ func TestParseMany(t *testing.T) {
 			name: "ObjectsWithMultipleEmptyLinesBetween",
 			input: "person:  John Doe\n" +
 				"source:  TEST\n" +
-				"\n\n\n" + // Multiple empty lines
+				"\n\n\n" +
 				"person:  Jane Smith\n" +
 				"source:  TEST",
 			expectErr:     false,
@@ -351,8 +354,6 @@ func TestParseMany(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			objs, err := ParseMany(tc.input)
-
-			// Check error expectations
 			if tc.expectErr {
 				if err == nil {
 					t.Errorf("Expected error but got nil")
@@ -362,13 +363,11 @@ func TestParseMany(t *testing.T) {
 				return
 			}
 
-			// No error expected
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 				return
 			}
 
-			// Check if nil is returned for empty input
 			if tc.expectedCount == 0 {
 				if objs != nil {
 					t.Errorf("Expected nil objects for empty input, got %v objects", len(objs))
@@ -376,13 +375,11 @@ func TestParseMany(t *testing.T) {
 				return
 			}
 
-			// Check object count
 			if len(objs) != tc.expectedCount {
 				t.Errorf("Expected %d objects, got %d", tc.expectedCount, len(objs))
 				return
 			}
 
-			// Validate objects
 			if tc.validateObjs != nil {
 				if err = tc.validateObjs(objs); err != nil {
 					t.Errorf("Objects validation failed: %v", err)
@@ -491,7 +488,7 @@ func TestParseManyFromReader(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			objs, err := parseObjects(bytes.NewReader(tc.input))
 
-			// Check error expectations
+			// Check error expectations.
 			if tc.expectErr {
 				if err == nil {
 					t.Errorf("Expected error but got nil")
