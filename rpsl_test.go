@@ -487,8 +487,6 @@ func TestParseManyFromReader(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			objs, err := parseObjects(bytes.NewReader(tc.input))
-
-			// Check error expectations.
 			if tc.expectErr {
 				if err == nil {
 					t.Errorf("Expected error but got nil")
