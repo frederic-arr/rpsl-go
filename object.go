@@ -90,6 +90,7 @@ func (o *Object) Exists(key string) bool {
 	return false
 }
 
+// String returns a string representation of the Object.
 func (o *Object) String() string {
 	// Compute the exact capacity required.
 	total := 0

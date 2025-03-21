@@ -90,6 +90,7 @@ func newAttribute(name []byte, value []byte) Attribute {
 	}
 }
 
+// parseAttributes parses the given buffer into a slice of Attributes.
 func parseAttributes(buf []byte) ([]Attribute, error) {
 	if len(buf) == 0 {
 		return nil, errors.New("parseAttributes: object cannot be null")
@@ -181,6 +182,7 @@ func parseValue(buf []byte, pos int) ([]byte, int) {
 	return buf[start:stop], pos
 }
 
+// String returns a string representation of the Attribute.
 func (a *Attribute) String() string {
 	var str strings.Builder
 	str.Grow(len(a.Name) + 1 + len(a.Value))
