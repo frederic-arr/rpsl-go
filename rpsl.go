@@ -131,3 +131,29 @@ func ParseManyFromReader(r io.Reader) ([]Object, error) {
 
 	return objects, nil
 }
+
+// NewReader returns a new Reader that can stream RPSL objects from an io.Reader.
+//
+// Example:
+//
+//	file, err := os.Open("rpsl_objects.txt")
+//	if err != nil {
+//	    log.Fatalf("Failed to open file: %v", err)
+//	}
+//	defer file.Close()
+//
+//	reader := rpsl.NewReader(file)
+//	for {
+//	    obj, err := reader.Next()
+//	    if err != nil {
+//	        if errors.Is(err, io.EOF) {
+//	            break
+//	        }
+//	        log.Fatalf("Failed to parse RPSL object: %v", err)
+//	    }
+//
+//	    fmt.Printf("Parsed Object: %+v\n", obj)
+//	}
+func NewReader(r io.Reader) *Reader {
+	return newReader(r)
+}
