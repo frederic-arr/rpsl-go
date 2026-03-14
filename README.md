@@ -15,6 +15,8 @@ go get github.com/frederic-arr/rpsl-go
 
 ## Usage
 
+### Parsing a single object
+
 ```go
 package main
 
@@ -41,15 +43,54 @@ func main() {
 
 	address := obj.GetFirst("address")
 	fmt.Printf("--- Address ---\n")
-	fmt.Printf("%s\n\n", address.Value)
+	fmt.Printf("%s\n\n", *address)
 
 	maintainers := obj.GetAll("mnt-by")
 	fmt.Printf("--- Maintainers ---\n")
 	for _, m := range maintainers {
-		fmt.Printf("%s\n", m.Value)
+		fmt.Printf("%s\n", m)
 	}
 }
+```
 
+### Streaming objects
+
+```go
+package main
+
+import (
+    "errors"
+    "fmt"
+    "io"
+    "log"
+    "strings"
+
+    "github.com/frederic-arr/rpsl-go"
+)
+
+func main() {
+    raw := "person:	John Doe\n" +
+        "address:	1234 Elm Street Iceland\n" +
+        "phone:		+1 555 123456\n" +
+        "nic-hdl:	JD1234-RIPE\n" +
+        "mnt-by:	FOO-MNT\n" +
+        "mnt-by:	BAR-MNT\n" +
+        "source:	RIPE"
+
+    reader := rpsl.NewReader(strings.NewReader(raw))
+
+    for {
+        obj, err := reader.Next()
+        if err != nil {
+            if errors.Is(err, io.EOF) {
+                break
+            }
+            log.Fatalf("reader.Next => %v", err)
+        }
+
+        fmt.Printf("Parsed Object: %s\n", *obj.GetFirst("person"))
+    }
+}
 ```
 
 See the output by running `go run examples/object.go` in this repository.
@@ -59,6 +100,10 @@ See the output by running `go run examples/object.go` in this repository.
 
 - No validation regarding the object is performed.
 - No validation regarding the attribute values is performed.
+
+## Testing
+
+The tests require data which can be pulled by running `./scripts/download-dumps.sh`.
 
 ## Acknowledgements
 

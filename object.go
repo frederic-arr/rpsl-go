@@ -184,16 +184,51 @@ func (o *Object) EnsureOne(key string) error {
 func parseObjects(r io.Reader) ([]Object, error) {
 	// Start with a small capacity that will grow if needed.
 	objects := make([]Object, 0, 4)
-	currentObject := bytes.NewBuffer(make([]byte, 0, 512))
+	reader := newReader(r)
 
-	// Pre-allocate a buffer for the scanner, but increase max size
+	for {
+		obj, err := reader.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
+
+		objects = append(objects, obj)
+	}
+
+	return objects, nil
+}
+
+// Reader represents an RPSL reader that can stream RPSL objects.
+type Reader struct {
+	buf     *bytes.Buffer
+	err     error
+	scanner *bufio.Scanner
+}
+
+// newReader returns a new RPSL reader that reads from r.
+func newReader(r io.Reader) *Reader {
+	buf := make([]byte, 0, 512) // Smaller initial allocation.
 	scanner := bufio.NewScanner(r)
-	buf := make([]byte, 0, 512)      // Smaller initial allocation.
 	scanner.Buffer(buf, 4*1024*1024) // Allow large lines.
 
-	// Process the file line by line.
-	for scanner.Scan() {
-		line := scanner.Bytes()
+	return &Reader{
+		buf:     bytes.NewBuffer(make([]byte, 0, 512)),
+		scanner: scanner,
+	}
+}
+
+// Next returns the next RPSL object from the reader.
+// If there are no more objects, it returns io.EOF.
+func (r *Reader) Next() (Object, error) {
+	if r.err != nil {
+		return Object{}, r.err
+	}
+
+	for r.scanner.Scan() {
+		line := r.scanner.Bytes()
 
 		// Skip comment lines.
 		if len(line) > 0 && (line[0] == '%' || line[0] == '#') {
@@ -202,46 +237,52 @@ func parseObjects(r io.Reader) ([]Object, error) {
 
 		// Handle empty lines.
 		if len(line) == 0 {
-			if currentObject.Len() > 0 {
-				attributes, err := parseAttributes(currentObject.Bytes())
+			if r.buf.Len() > 0 {
+				attributes, err := parseAttributes(r.buf.Bytes())
 				if err != nil {
-					return nil, err
-				}
-
-				if len(attributes) > 0 {
-					objects = append(objects, Object{Attributes: attributes})
+					return Object{}, err
 				}
 
 				// Reset for the next object.
-				currentObject.Reset()
+				r.buf.Reset()
+
+				if len(attributes) > 0 {
+					return Object{Attributes: attributes}, nil
+				}
 			}
 
 			continue
 		}
 
 		// Add the line to the current object.
-		if currentObject.Len() > 0 {
-			currentObject.WriteByte('\n')
+		if r.buf.Len() > 0 {
+			r.buf.WriteByte('\n')
 		}
 
-		currentObject.Write(line)
+		r.buf.Write(line)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	if err := r.scanner.Err(); err != nil {
+		r.err = err
+		return Object{}, err
 	}
 
-	// Don't forget the last object if there is one.
-	if currentObject.Len() > 0 {
-		attributes, err := parseAttributes(currentObject.Bytes())
+	// Remember the last object if there is one.
+	if r.buf.Len() > 0 {
+		attributes, err := parseAttributes(r.buf.Bytes())
 		if err != nil {
-			return nil, err
+			return Object{}, err
 		}
+
+		// Reset so we don't return it again.
+		r.buf.Reset()
 
 		if len(attributes) > 0 {
-			objects = append(objects, Object{Attributes: attributes})
+			return Object{Attributes: attributes}, nil
 		}
 	}
 
-	return objects, nil
+	r.err = io.EOF
+
+	return Object{}, r.err
 }

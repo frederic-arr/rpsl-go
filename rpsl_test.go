@@ -515,28 +515,38 @@ func TestParseManyFromReader(t *testing.T) {
 	}
 }
 
-func BenchmarkParseFromReader(b *testing.B) {
-	data := bytes.NewReader([]byte(`mntner:          DEV-MNT  # Comment \n" +
-		"descr:           DEV maintainer\n" +
-		"admin-c:         VM1-DEV\n" +
-		"tech-c:          VM1-DEV\n" +
-		"upd-to:          v.m@example.net\n" +
-		"mnt-nfy:         auto@example.net\n" +
-		"auth:            MD5-PW $1$q8Su3Hq/$rJt5M3TNLeRE4UoCh5bSH/\n" +
-		"remarks:         password: secret\n" +
-		"mnt-by:          DEV-MNT\n" +
-		"source:          DEV\n
+func TestReader(t *testing.T) {
+	input := `person: John Doe
+address: 1234 Elm Street
+source: RIPE
 
-`))
+person: Jane Smith
+address: 5678 Oak Street
+source: RIPE`
 
-	b.ResetTimer()
-	for range b.N {
-		if _, err := parseObjects(data); err != nil {
-			b.Fatalf("ParseManyFromReader error: %v", err)
-		}
+	reader := NewReader(strings.NewReader(input))
 
-		if _, err := data.Seek(0, io.SeekStart); err != nil {
-			b.Fatalf("ParseManyFromReader error: %v", err)
-		}
+	// First object
+	obj, err := reader.Next()
+	if err != nil {
+		t.Fatalf("Expected first object, got error: %v", err)
+	}
+	if *obj.GetFirst("person") != "John Doe" {
+		t.Errorf("Expected John Doe, got %v", obj.GetFirst("person"))
+	}
+
+	// Second object
+	obj, err = reader.Next()
+	if err != nil {
+		t.Fatalf("Expected second object, got error: %v", err)
+	}
+	if *obj.GetFirst("person") != "Jane Smith" {
+		t.Errorf("Expected Jane Smith, got %v", obj.GetFirst("person"))
+	}
+
+	// EOF
+	obj, err = reader.Next()
+	if !errors.Is(err, io.EOF) {
+		t.Errorf("Expected io.EOF, got %v", err)
 	}
 }
