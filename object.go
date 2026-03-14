@@ -240,7 +240,6 @@ func (r *Reader) Next() (Object, error) {
 			if r.buf.Len() > 0 {
 				attributes, err := parseAttributes(r.buf.Bytes())
 				if err != nil {
-					r.err = err
 					return Object{}, err
 				}
 
@@ -272,7 +271,6 @@ func (r *Reader) Next() (Object, error) {
 	if r.buf.Len() > 0 {
 		attributes, err := parseAttributes(r.buf.Bytes())
 		if err != nil {
-			r.err = err
 			return Object{}, err
 		}
 
